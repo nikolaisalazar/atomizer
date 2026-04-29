@@ -29,7 +29,7 @@ export default function FragranceGraph({
 }: Props) {
   const fgRef = useRef<ForceGraphMethods<GraphNode>>(undefined);
 
-  // When selected node changes, gently re-center on it
+  // When selected node changes, center on it
   useEffect(() => {
     if (selectedId == null || !fgRef.current) return;
     const node = data.nodes.find((n) => n.fragrance.id === selectedId);
@@ -84,7 +84,7 @@ export default function FragranceGraph({
         ctx.fillText("★", x, y - r - 5);
       }
 
-      // Label (only at zoom ≥ 1.5)
+      // Label (only at zoom ≥ 1.5 or when selected)
       if (globalScale >= 1.5 || isSelected) {
         const label = fragrance.name ?? "Unknown";
         const fontSize = Math.max(4, 11 / globalScale);
@@ -132,14 +132,15 @@ export default function FragranceGraph({
         return Math.max(0.5, sim * 3);
       }}
       onNodeClick={handleClick}
-      cooldownTicks={80}
-      nodeLabel={(node: GraphNode) =>
-        `${node.fragrance.name ?? "Unknown"} — ${node.fragrance.brand ?? ""}`
-      }
-      enableNodeDrag={true}
+      d3AlphaDecay={1}
+      d3VelocityDecay={1}
+      enableNodeDrag={false}
       enableZoomInteraction={true}
       minZoom={0.2}
       maxZoom={8}
+      nodeLabel={(node: GraphNode) =>
+        `${node.fragrance.name ?? "Unknown"} — ${node.fragrance.brand ?? ""}`
+      }
     />
   );
 }
