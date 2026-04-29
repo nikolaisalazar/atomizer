@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+env/
+.env
+
+# Raw source data (large, re-downloadable)
+scripts/*.csv
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Logs
+*.log
+npm-debug.log*
+
+# Node (web subdirectory has its own .gitignore)
+web/node_modules/
+web/.next/
+web/out/
+web/.vercel
