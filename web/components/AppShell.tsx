@@ -116,12 +116,6 @@ export default function AppShell() {
     setPanelOpen(true);
   }, []);
 
-  /** "Expand" button in panel → explicit expansion from the panel. */
-  const handleExpandFromPanel = useCallback(() => {
-    if (selectedId == null) return;
-    addNeighbors(selectedId, false);
-  }, [selectedId, addNeighbors]);
-
   /** Bookmark toggle. */
   const handleToggleBookmark = useCallback(() => {
     if (selectedId == null) return;
@@ -247,7 +241,6 @@ export default function AppShell() {
             fragrance={selectedFragrance}
             isBookmarked={bookmarkedSet.has(selectedFragrance.id)}
             onToggleBookmark={handleToggleBookmark}
-            onExpandInGraph={handleExpandFromPanel}
             onClose={() => setPanelOpen(false)}
           />
         )}
