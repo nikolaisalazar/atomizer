@@ -59,3 +59,7 @@ export function searchFragrances(query: string, limit = 12): Fragrance[] {
 export function isDataLoaded(): boolean {
   return fragrances !== null && neighbors !== null;
 }
+
+export function getAllFragrances(): Fragrance[] {
+  return fragrances ?? [];
+}

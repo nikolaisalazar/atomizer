@@ -3,11 +3,13 @@
 import type { Fragrance } from "@/lib/types";
 import { accordColor } from "@/lib/accordColors";
 
+// Positional decay weights — must match WEIGHTS in scripts/precompute.py
+const WEIGHTS = [1.0, 0.8, 0.6, 0.4, 0.2];
+
 interface Props {
   fragrance: Fragrance;
   isBookmarked: boolean;
   onToggleBookmark: () => void;
-  onExpandInGraph: () => void;
   onClose: () => void;
 }
 
@@ -40,7 +42,6 @@ export default function FragrancePanel({
   fragrance,
   isBookmarked,
   onToggleBookmark,
-  onExpandInGraph,
   onClose,
 }: Props) {
   const displayRating = fragrance.rating
@@ -90,32 +91,41 @@ export default function FragrancePanel({
         </div>
       )}
 
-      {/* Accords */}
+      {/* Accords with weight bars */}
       {fragrance.accords.length > 0 && (
         <div className="mx-4 mt-4">
           <p className="text-xs text-white/40 uppercase tracking-wider mb-2">
             Accords
           </p>
-          <div className="flex flex-wrap gap-2">
-            {fragrance.accords.map((accord, i) => (
-              <span
-                key={accord}
-                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium"
-                style={{
-                  backgroundColor: accordColor(accord) + "22",
-                  borderColor: accordColor(accord) + "55",
-                  color: accordColor(accord),
-                  border: "1px solid",
-                  opacity: 1 - i * 0.12,
-                }}
-              >
-                <span
-                  className="w-1.5 h-1.5 rounded-full"
-                  style={{ backgroundColor: accordColor(accord) }}
-                />
-                {accord}
-              </span>
-            ))}
+          <div className="flex flex-col gap-2">
+            {fragrance.accords.map((accord, i) => {
+              const color = accordColor(accord);
+              const barWidth = `${(WEIGHTS[i] ?? 0) * 100}%`;
+              return (
+                <div key={accord}>
+                  <span
+                    className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium"
+                    style={{
+                      backgroundColor: color + "22",
+                      borderColor: color + "55",
+                      color,
+                      border: "1px solid",
+                      opacity: 1 - i * 0.12,
+                    }}
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{ backgroundColor: color }}
+                    />
+                    {accord}
+                  </span>
+                  <div
+                    className="mt-1 h-0.5 rounded-full"
+                    style={{ width: barWidth, backgroundColor: color + "55" }}
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -153,21 +163,6 @@ export default function FragrancePanel({
         >
           <span>{isBookmarked ? "★" : "☆"}</span>
           <span>{isBookmarked ? "Bookmarked" : "Bookmark"}</span>
-        </button>
-        <button
-          onClick={onExpandInGraph}
-          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 text-white/50 hover:text-white/80 hover:bg-white/10 transition flex-1 justify-center"
-          title="Load this fragrance's neighbors into the graph"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            className="w-3.5 h-3.5"
-          >
-            <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
-          </svg>
-          <span>Expand</span>
         </button>
       </div>
 

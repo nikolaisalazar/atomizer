@@ -1,15 +1,15 @@
 """
 precompute.py
 Reads parfumo_data_clean.csv, builds a weighted accord similarity graph,
-and outputs:
-  - fragrances.json  (array of fragrance objects)
+computes a 2D UMAP layout, and outputs:
+  - fragrances.json  (array of fragrance objects, each with umap_x/umap_y)
   - neighbors.json   (object: fragrance_id → [[neighbor_id, score], ...])
 
 Run from the /scripts directory:
     python precompute.py
 
 Requirements:
-    pip install pandas scikit-learn numpy
+    pip install pandas scikit-learn numpy umap-learn
 """
 
 import json
@@ -28,6 +28,12 @@ OUT_DIR     = Path(__file__).parent.parent / "web" / "public" / "data"
 K           = 15          # neighbors per fragrance
 BATCH_SIZE  = 2000        # rows per similarity batch (memory trade-off)
 WEIGHTS     = [1.0, 0.8, 0.6, 0.4, 0.2]   # positional decay (up to 5 accords)
+
+# ── UMAP config (tune min_dist if the map looks too spread out or blobby) ────
+UMAP_N_NEIGHBORS  = 15      # balances local vs global structure; matches K
+UMAP_MIN_DIST     = 0.1     # primary tuning knob for cluster density
+UMAP_RANDOM_STATE = 42      # ensures reproducible layout across pipeline runs
+UMAP_CANVAS_RANGE = 10000   # output scaled to [-5000, 5000] on each axis
 
 # ── Known accords (22 unique values from the dataset) ───────────────────────
 KNOWN_ACCORDS = [
@@ -85,9 +91,35 @@ matrix = np.vstack(df["_accords_parsed"].apply(build_vector).values)  # (N, 22)
 # L2-normalise so dot product == cosine similarity
 matrix_norm = normalize(matrix, norm="l2")
 
+# ── Compute UMAP 2D layout ────────────────────────────────────────────────────
+print("Computing UMAP layout (this takes 30–90 seconds)…", flush=True)
+import umap  # imported here so the script fails fast if umap-learn is missing
+
+reducer = umap.UMAP(
+    n_components=2,
+    n_neighbors=UMAP_N_NEIGHBORS,
+    min_dist=UMAP_MIN_DIST,
+    metric="cosine",
+    random_state=UMAP_RANDOM_STATE,
+)
+umap_2d = reducer.fit_transform(matrix_norm)  # shape: (N, 2)
+
+# Scale each axis to [-UMAP_CANVAS_RANGE/2, UMAP_CANVAS_RANGE/2]
+# Guard against degenerate constant axes (mx == mn → division by zero → NaN).
+# A flat axis maps all points to 0 (centre of canvas).
+for axis in range(2):
+    col = umap_2d[:, axis]
+    mn, mx = col.min(), col.max()
+    if mx == mn:
+        umap_2d[:, axis] = 0.0
+    else:
+        umap_2d[:, axis] = ((col - mn) / (mx - mn) - 0.5) * UMAP_CANVAS_RANGE
+
+N = len(df)
+print(f"  UMAP layout computed for {N:,} fragrances", flush=True)
+
 # ── Compute top-K neighbours in batches ──────────────────────────────────────
 print(f"Computing top-{K} neighbours in batches of {BATCH_SIZE}…", flush=True)
-N = len(df)
 neighbors: dict[int, list[list]] = {}  # id → [[neighbor_id, score], ...]
 
 for start in range(0, N, BATCH_SIZE):
@@ -114,7 +146,7 @@ def safe(val):
     return val if isinstance(val, str) and val.strip().lower() not in ("nan", "na", "") else None
 
 fragrances = []
-for _, row in df.iterrows():
+for idx, (_, row) in enumerate(df.iterrows()):
     fragrances.append({
         "id":          int(row["id"]),
         "name":        safe(row.get("Name")),
@@ -129,6 +161,8 @@ for _, row in df.iterrows():
         "top_notes":   safe(row.get("Top_Notes")),
         "mid_notes":   safe(row.get("Middle_Notes")),
         "base_notes":  safe(row.get("Base_Notes")),
+        "umap_x":      round(float(umap_2d[idx, 0]), 2),
+        "umap_y":      round(float(umap_2d[idx, 1]), 2),
     })
 
 # ── Write output ──────────────────────────────────────────────────────────────

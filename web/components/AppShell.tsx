@@ -9,7 +9,7 @@ import {
   loadData,
   getFragrance,
   getNeighbors,
-  isDataLoaded,
+  getAllFragrances,
 } from "@/lib/data";
 import {
   getBookmarks,
@@ -28,6 +28,9 @@ const FragranceGraph = dynamic(() => import("./FragranceGraph"), {
   ),
 });
 
+// Top-N neighbors rendered as edges per node. Adjust after visual inspection.
+const RENDERED_EDGES_PER_NODE = 3;
+
 function linkKey(a: number, b: number): string {
   return a < b ? `${a}-${b}` : `${b}-${a}`;
 }
@@ -35,11 +38,6 @@ function linkKey(a: number, b: number): string {
 export default function AppShell() {
   const [dataReady, setDataReady] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
-
-  // Graph state stored in refs to avoid re-render on every expansion;
-  // we only trigger re-render when we're ready to commit a new snapshot.
-  const nodesMapRef = useRef<Map<string, GraphNode>>(new Map());
-  const linksMapRef = useRef<Map<string, GraphLink>>(new Map());
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -51,12 +49,42 @@ export default function AppShell() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [graphSize, setGraphSize] = useState({ w: 800, h: 600 });
 
-  // ── Load JSON data ─────────────────────────────────────────────────────────
+  // ── Load JSON data and build full graph ────────────────────────────────────
   useEffect(() => {
     loadData()
       .then(() => {
         setDataReady(true);
         setBookmarkIds(getBookmarks());
+
+        // Build the full UMAP graph in one pass
+        const allFragrances = getAllFragrances();
+        const seenEdges = new Set<string>();
+
+        const nodes: GraphNode[] = allFragrances.map((f) => ({
+          id: String(f.id),
+          fragrance: f,
+          isRoot: false,
+          fx: f.umap_x,
+          fy: f.umap_y,
+        }));
+
+        const links: GraphLink[] = [];
+        for (const f of allFragrances) {
+          const topNeighbors = getNeighbors(f.id).slice(0, RENDERED_EDGES_PER_NODE);
+          for (const [neighborId, score] of topNeighbors) {
+            const key = linkKey(f.id, neighborId);
+            if (!seenEdges.has(key)) {
+              seenEdges.add(key);
+              links.push({
+                source: String(f.id),
+                target: String(neighborId),
+                similarity: score,
+              });
+            }
+          }
+        }
+
+        setGraphData({ nodes, links });
       })
       .catch((err) => {
         setDataError(String(err));
@@ -75,87 +103,18 @@ export default function AppShell() {
     return () => obs.disconnect();
   }, []);
 
-  // ── Graph helpers ──────────────────────────────────────────────────────────
-  const commitGraph = useCallback(() => {
-    setGraphData({
-      nodes: Array.from(nodesMapRef.current.values()),
-      links: Array.from(linksMapRef.current.values()),
-    });
+  // ── User actions ───────────────────────────────────────────────────────────
+  /** Search result selected → select + open panel. Graph does not change. */
+  const handleSearchSelect = useCallback((f: Fragrance) => {
+    setSelectedId(f.id);
+    setPanelOpen(true);
   }, []);
 
-  const addNeighbors = useCallback(
-    (fragranceId: number, isRoot: boolean) => {
-      if (!isDataLoaded()) return;
-      const fragrance = getFragrance(fragranceId);
-      if (!fragrance) return;
-
-      const nodeKey = String(fragranceId);
-      if (!nodesMapRef.current.has(nodeKey)) {
-        nodesMapRef.current.set(nodeKey, { id: nodeKey, fragrance, isRoot });
-      } else if (isRoot) {
-        // Promote existing node to root
-        const existing = nodesMapRef.current.get(nodeKey)!;
-        nodesMapRef.current.set(nodeKey, { ...existing, isRoot: true });
-      }
-
-      const neighborPairs = getNeighbors(fragranceId);
-      for (const [neighborId, score] of neighborPairs) {
-        const neighborKey = String(neighborId);
-        const neighborFrag = getFragrance(neighborId);
-        if (!neighborFrag) continue;
-
-        if (!nodesMapRef.current.has(neighborKey)) {
-          nodesMapRef.current.set(neighborKey, {
-            id: neighborKey,
-            fragrance: neighborFrag,
-            isRoot: false,
-          });
-        }
-
-        const lk = linkKey(fragranceId, neighborId);
-        if (!linksMapRef.current.has(lk)) {
-          linksMapRef.current.set(lk, {
-            source: nodeKey,
-            target: neighborKey,
-            similarity: score,
-          });
-        }
-      }
-
-      commitGraph();
-    },
-    [commitGraph]
-  );
-
-  // ── User actions ───────────────────────────────────────────────────────────
-  /** Search result selected → seed the graph with this fragrance. */
-  const handleSearchSelect = useCallback(
-    (f: Fragrance) => {
-      // Reset graph
-      nodesMapRef.current = new Map();
-      linksMapRef.current = new Map();
-      addNeighbors(f.id, true);
-      setSelectedId(f.id);
-      setPanelOpen(true);
-    },
-    [addNeighbors]
-  );
-
-  /** Node clicked in graph → select + expand its neighborhood. */
-  const handleNodeClick = useCallback(
-    (fragranceId: number) => {
-      setSelectedId(fragranceId);
-      setPanelOpen(true);
-      addNeighbors(fragranceId, false);
-    },
-    [addNeighbors]
-  );
-
-  /** "Expand" button in panel → explicit expansion from the panel. */
-  const handleExpandFromPanel = useCallback(() => {
-    if (selectedId == null) return;
-    addNeighbors(selectedId, false);
-  }, [selectedId, addNeighbors]);
+  /** Node clicked → select + open panel. */
+  const handleNodeClick = useCallback((fragranceId: number) => {
+    setSelectedId(fragranceId);
+    setPanelOpen(true);
+  }, []);
 
   /** Bookmark toggle. */
   const handleToggleBookmark = useCallback(() => {
@@ -164,25 +123,15 @@ export default function AppShell() {
     setBookmarkIds(getBookmarks());
   }, [selectedId]);
 
-  /** Bookmark list → select + focus in graph (or seed if not present). */
-  const handleBookmarkSelect = useCallback(
-    (id: number) => {
-      const alreadyInGraph = nodesMapRef.current.has(String(id));
-      if (!alreadyInGraph) {
-        addNeighbors(id, false);
-      }
-      setSelectedId(id);
-      setPanelOpen(true);
-      setLeftTab("search");
-    },
-    [addNeighbors]
-  );
+  /** Bookmark list → select + focus in graph. */
+  const handleBookmarkSelect = useCallback((id: number) => {
+    setSelectedId(id);
+    setPanelOpen(true);
+    setLeftTab("search");
+  }, []);
 
   // Bookmarked ids as Set for fast lookup in graph renderer
-  const bookmarkedSet = useMemo(
-    () => new Set(bookmarkIds),
-    [bookmarkIds]
-  );
+  const bookmarkedSet = useMemo(() => new Set(bookmarkIds), [bookmarkIds]);
 
   const selectedFragrance = selectedId != null ? getFragrance(selectedId) : null;
 
@@ -237,12 +186,6 @@ export default function AppShell() {
                   Error: {dataError}
                 </p>
               )}
-              {dataReady && graphData.nodes.length === 0 && (
-                <p className="text-xs text-white/25 mt-4 leading-relaxed">
-                  Search for a fragrance to seed the graph. Click any node to
-                  expand its neighborhood and traverse the similarity space.
-                </p>
-              )}
             </div>
           ) : (
             <BookmarkPanel
@@ -260,19 +203,19 @@ export default function AppShell() {
         {/* Footer stats */}
         {dataReady && (
           <div className="px-4 py-3 border-t border-white/8 text-xs text-white/20 flex justify-between">
-            <span>{graphData.nodes.length} nodes</span>
-            <span>{graphData.links.length} links</span>
+            <span>{graphData.nodes.length.toLocaleString()} nodes</span>
+            <span>{graphData.links.length.toLocaleString()} links</span>
           </div>
         )}
       </aside>
 
       {/* ── Graph canvas ───────────────────────────────────────────────────── */}
       <main className="flex-1 relative overflow-hidden" ref={containerRef}>
-        {graphData.nodes.length === 0 && dataReady ? (
+        {!dataReady ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none select-none">
             <p className="text-white/10 text-4xl">✦</p>
-            <p className="text-white/20 text-sm">
-              Search a fragrance to begin
+            <p className="text-white/20 text-sm animate-pulse">
+              Loading fragrance map…
             </p>
           </div>
         ) : (
@@ -298,7 +241,6 @@ export default function AppShell() {
             fragrance={selectedFragrance}
             isBookmarked={bookmarkedSet.has(selectedFragrance.id)}
             onToggleBookmark={handleToggleBookmark}
-            onExpandInGraph={handleExpandFromPanel}
             onClose={() => setPanelOpen(false)}
           />
         )}

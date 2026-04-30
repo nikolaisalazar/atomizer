@@ -12,6 +12,8 @@ export interface Fragrance {
   top_notes: string | null;
   mid_notes: string | null;
   base_notes: string | null;
+  umap_x?: number;
+  umap_y?: number;
 }
 
 export interface GraphNode {
@@ -23,6 +25,8 @@ export interface GraphNode {
   y?: number;
   vx?: number;
   vy?: number;
+  fx?: number; // react-force-graph-2d fixed-position fields
+  fy?: number;
 }
 
 export interface GraphLink {
