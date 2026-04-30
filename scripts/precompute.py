@@ -105,10 +105,15 @@ reducer = umap.UMAP(
 umap_2d = reducer.fit_transform(matrix_norm)  # shape: (N, 2)
 
 # Scale each axis to [-UMAP_CANVAS_RANGE/2, UMAP_CANVAS_RANGE/2]
+# Guard against degenerate constant axes (mx == mn → division by zero → NaN).
+# A flat axis maps all points to 0 (centre of canvas).
 for axis in range(2):
     col = umap_2d[:, axis]
     mn, mx = col.min(), col.max()
-    umap_2d[:, axis] = ((col - mn) / (mx - mn) - 0.5) * UMAP_CANVAS_RANGE
+    if mx == mn:
+        umap_2d[:, axis] = 0.0
+    else:
+        umap_2d[:, axis] = ((col - mn) / (mx - mn) - 0.5) * UMAP_CANVAS_RANGE
 
 N = len(df)
 print(f"  UMAP layout computed for {N:,} fragrances", flush=True)
