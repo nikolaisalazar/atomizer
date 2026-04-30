@@ -181,9 +181,11 @@ export default function FragranceGraphSigma({
 
     const graph = sigma.getGraph() as Graph<NodeAttrs, EdgeAttrs>;
 
-    // The "active" node is: hovered first, then selected (if any).
-    const focusedNode =
-      hoveredNode ?? (selectedId != null ? String(selectedId) : null);
+    // The "active" node is the hovered node only.
+    // Selection is a highlight-only state and does NOT trigger the dim/filter
+    // treatment — that would leave the graph permanently filtered after a click
+    // because selectedId is never cleared by the shell.
+    const focusedNode = hoveredNode;
 
     // Pre-build the neighbor set so reducers don't recompute it per-node.
     const focusedNeighbors: Set<string> =
@@ -221,8 +223,13 @@ export default function FragranceGraphSigma({
           if (isNeighbor) {
             return base;
           }
-          // Dim everything else and suppress labels.
-          return { ...base, color: DIM_COLOR, label: "", forceLabel: false };
+          // Dim everything else and suppress labels — but bookmarked nodes
+          // keep their persistent label regardless of the hover state.
+          return {
+            ...base,
+            color: DIM_COLOR,
+            ...(isBookmarked ? {} : { label: "", forceLabel: false }),
+          };
         }
 
         // No focus — just highlight the selected node if there is one.
