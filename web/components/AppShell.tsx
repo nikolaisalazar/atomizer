@@ -18,8 +18,8 @@ import {
 } from "@/lib/bookmarks";
 import type { Fragrance, GraphData, GraphNode, GraphLink } from "@/lib/types";
 
-// Dynamic import to skip SSR for the canvas-based graph
-const FragranceGraph = dynamic(() => import("./FragranceGraph"), {
+// Dynamic import to skip SSR for the WebGL-based graph
+const FragranceGraph = dynamic(() => import("./FragranceGraphSigma"), {
   ssr: false,
   loading: () => (
     <div className="flex-1 flex items-center justify-center text-white/20 text-sm">
